@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+results/
 
 # OS
 .DS_Store

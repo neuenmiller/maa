@@ -41,10 +41,11 @@ event stream → `noise` (optional) → `reconstruct` → frames out.
 
 ## Roadmap
 
+- [ ] **First end-to-end demo GIF in `results/`** — 240 fps clip → log-intensity diffs → threshold → green/red events → GIF. Ugly, no noise, no reconstruction, but visible on day one.
 - [ ] Implement `simulate` — threshold-crossing events from frames
 - [ ] Implement `noise` — background activity, threshold jitter, hot pixels
 - [ ] Implement `reconstruct` — integrate events back to intensity
-- [ ] First end-to-end demo GIF in `results/`
+- [ ] **v1 C++ kernel** (pybind11) — port the hot loop; validate against the NumPy oracle; benchmark NumPy events/sec → C++ speedup
 - [ ] `experiments/reproduce_v2e` — sanity-check against v2e
 - [ ] `experiments/e2vid_bench` — reconstruction benchmark
-- [ ] `experiments/sim2real` — does sim-trained transfer to real events?
+- [ ] `experiments/sim2real` *(v2 stretch)* — does sim-trained transfer to real events?
