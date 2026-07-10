@@ -7,7 +7,11 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
-results/
+
+# Results: keep the folder marker and the headline demo GIF; ignore scratch figures.
+results/*
+!results/.gitkeep
+!results/demo.gif
 
 # OS
 .DS_Store

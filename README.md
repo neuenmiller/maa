@@ -1,10 +1,10 @@
 # maa 馬/ม้า
 
 > 馬 (Japanese) / ม้า (Thai): *horse*. Named for Eadweard Muybridge's
-> galloping horse (1878) — the first photo sequence fast enough to show
+> galloping horse (1878), the first photo sequence fast enough to show
 > what happens between the frames the eye can see.
 
-Minimal event-camera simulator — converts high-fps video into event
+Minimal event-camera simulator, converts high-fps video into event
 streams. 馬/ม้า: see Muybridge, 1878.
 
 <!-- GIF: drop the headline demo here once results/ has one. -->
@@ -13,7 +13,7 @@ streams. 馬/ม้า: see Muybridge, 1878.
 ## Install
 
 ```bash
-git clone <this-repo> maa
+git clone https://github.com/neuenmiller/maa maa
 cd maa
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
