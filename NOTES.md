@@ -1,19 +1,5 @@
-# NOTES — lab notebook & postmortems
+10/7/2026
 
-Running log of what was tried, what broke, and why. Newest entries on top.
+on fish, activate venv with .venv/bin/activate.fish
 
-## Banked lessons
-
-- The math fits on an index card; the flicker doesn't.
-
----
-
-## 2026-06-20 — Repository scaffolding
-
-_First entry placeholder._ Set up the skeleton: package modules
-(`simulate`, `noise`, `reconstruct`), an `experiments/` folder per study,
-`results/` for committed figures and GIFs, and a gitignored `data/` with a
-`fetch.py` stub. Nothing implemented yet.
-
-- TODO: first end-to-end pass — video in, events out, frames back.
-- TODO: pick the first clip for results/ (something with obvious flicker).
+nest session: drop a 240fps slow-mo clip in 'data/' and write the thresold crossing loop and ship a GIF
