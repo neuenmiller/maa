@@ -9,7 +9,24 @@ differences between (optionally upsampled) frames, not from a true
 continuous photocurrent. See README Limitations.
 """
 
-# TODO: define the Event representation (structured array vs. dataclass).
-# TODO: implement simulate(frames, fps, threshold_c) -> events.
-# TODO: optional frame interpolation to approximate sub-frame timing.
-# TODO: per-pixel log-intensity state + threshold crossing -> polarity.
+import numpy as np
+
+def simulate(frames, threshold_c):
+    eps = 1e-6
+    L = np.log(frames + eps)
+    T, H, W = frames.shape
+
+    latest_ref = L[0].copy()
+    out = np.zeros((T - 1, H, W), dtype=np.int8)
+
+    for t in range(1, T):
+        frame = L[t]
+        polarity = np.zeros_like(frame, dtype=np.int8)
+        diff = frame - latest_ref
+        polarity[diff >= threshold_c] = 1
+        polarity[diff <= -threshold_c] = -1
+        fired = polarity != 0
+        out[t-1] = polarity
+        latest_ref[fired] = frame[fired]
+
+    return out

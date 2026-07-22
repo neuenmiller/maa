@@ -41,7 +41,7 @@ event stream → `noise` (optional) → `reconstruct` → frames out.
 
 ## Roadmap
 
-- [ ] **First end-to-end demo GIF in `results/`** — 240 fps clip → log-intensity diffs → threshold → green/red events → GIF. Ugly, no noise, no reconstruction, but visible on day one.
+- [x] **First end-to-end demo GIF in `results/`** — 240 fps clip → log-intensity diffs → threshold → green/red events → GIF. Ugly, no noise, no reconstruction, but visible on day one.
 - [ ] Implement `simulate` — threshold-crossing events from frames
 - [ ] Implement `noise` — background activity, threshold jitter, hot pixels
 - [ ] Implement `reconstruct` — integrate events back to intensity
