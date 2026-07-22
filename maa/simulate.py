@@ -11,7 +11,7 @@ continuous photocurrent. See README Limitations.
 
 import numpy as np
 
-def simulate(frames, threshold_c):
+def simulate(frames, fps, threshold_c):
     eps = 1e-6
     L = np.log(frames + eps)
     T, H, W = frames.shape
