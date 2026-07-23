@@ -21,17 +21,31 @@ pip install -e .
 
 ## Run
 
-Fetch some footage (data/ is gitignored), then simulate events and
-reconstruct intensity to check them:
+Smoke-test the install:
 
 ```bash
-python data/fetch.py                 # populate data/ (stub for now)
-
-python -c "import maa; print(maa.__version__)"   # smoke test
+python -c "import maa; print(maa.__version__)"
 ```
 
-Once the API lands, the loop will be roughly: video in → `simulate` →
-event stream → `noise` (optional) → `reconstruct` → frames out.
+Reproduce the headline GIF — drop a high-fps clip into the gitignored
+`data/` by hand (`data/fetch.py` is still a stub), then:
+
+```bash
+python examples/demo.py --input data/clip.mp4      # -> results/demo.gif
+```
+
+No clip handy? Exercise the colour + GIF plumbing on a synthetic pattern
+(write it somewhere throwaway so it doesn't clobber the committed GIF):
+
+```bash
+python examples/demo.py --selftest --output /tmp/selftest.gif
+```
+
+`simulate` turns the frames into a sparse `(x, y, t, p)` event stream and
+the demo paints it green (ON) / red (OFF). Still to land: `noise`
+(optional sensor noise) and `reconstruct` (integrate events back to
+intensity). Full loop: video in → `simulate` → events → `noise` →
+`reconstruct` → frames out.
 
 ## Limitations
 
@@ -42,7 +56,7 @@ event stream → `noise` (optional) → `reconstruct` → frames out.
 ## Roadmap
 
 - [x] **First end-to-end demo GIF in `results/`** — 240 fps clip → log-intensity diffs → threshold → green/red events → GIF. Ugly, no noise, no reconstruction, but visible on day one.
-- [ ] Implement `simulate` — threshold-crossing events from frames; emit a sparse `(x, y, t, p)` event stream (struct-of-arrays)
+- [x] Implement `simulate` — threshold-crossing events from frames; emit a sparse `(x, y, t, p)` event stream (struct-of-arrays)
 - [ ] Implement `noise` — background activity, threshold jitter, hot pixels
 - [ ] Implement `reconstruct` — integrate events back to intensity
 - [ ] `experiments/reproduce_v2e` — sanity-check against v2e. Run this **before** adding pixel-model sophistication: the diff against v2e *is* the requirements list — it names which features (refractory period, intensity-dependent latency, sub-frame interpolation, per-pixel threshold variation) actually move the output.
