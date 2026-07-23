@@ -58,20 +58,34 @@ def read_frames(path: Path, max_frames: int | None):
     return np.stack(frames), fps
 
 
-def to_polarity_frames(events, shape) -> np.ndarray:
+def to_polarity_frames(events, shape, fps) -> np.ndarray:
     """Adapter: whatever ``simulate()`` returns -> (T-1, H, W) int8 maps in
     {-1, 0, +1}.
 
-    Day-one contract: ``simulate()`` already returns exactly that — one signed
-    polarity map per frame transition. If you later return a real event list
-    (x, y, t, polarity), rewrite THIS function to bin those events back into
-    per-frame maps; nothing else in the file needs to change. ``np.sign`` means
-    a function that returns raw step *counts* still colours correctly.
+    Accepts both simulate() contracts:
+      - dense (T-1, H, W) polarity maps (the v0 contract) — passed through;
+      - the sparse SoA stream, a 4-tuple of 1-D arrays (x, y, t, p) — binned
+        back into per-transition maps. Timestamps follow the convention in
+        tests/test_simulate.py: the frames k -> k+1 transition is stamped
+        t = (k+1)/fps, so transition index = round(t * fps) - 1.
+    ``np.sign`` means raw step *counts* still colour correctly.
     """
+    T, H, W = shape
+    if isinstance(events, (tuple, list)) and len(events) == 4:
+        x, y, t, p = (np.asarray(a) for a in events)
+        maps = np.zeros((T - 1, H, W), dtype=np.int8)
+        k = np.rint(t * fps).astype(np.intp) - 1
+        if len(k) and (k.min() < 0 or k.max() >= T - 1):
+            raise SystemExit(
+                f"event timestamps bin to transitions {k.min()}..{k.max()}, "
+                f"outside 0..{T - 2} — check the t = (k+1)/fps convention."
+            )
+        maps[k, y.astype(np.intp), x.astype(np.intp)] = np.sign(p)
+        return maps
     maps = np.asarray(events)
     if maps.ndim != 3:
         raise SystemExit(
-            "demo expects per-transition polarity maps of shape (T-1, H, W); "
+            "demo expects (T-1, H, W) polarity maps or an (x, y, t, p) tuple; "
             f"got shape {maps.shape}. Adjust to_polarity_frames()."
         )
     return np.sign(maps).astype(np.int8)
@@ -152,7 +166,7 @@ def main() -> None:
     events = simulate(frames, fps=in_fps, threshold_c=args.threshold)
     # --- end seam ---
 
-    polarity = to_polarity_frames(events, frames.shape)
+    polarity = to_polarity_frames(events, frames.shape, in_fps)
     rgb = [colorize(p, frames[i + 1]) for i, p in enumerate(polarity)]
     write_gif(args.output, rgb, args.out_fps)
 

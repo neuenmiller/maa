@@ -15,18 +15,29 @@ def simulate(frames, fps, threshold_c):
     eps = 1e-6
     L = np.log(frames + eps)
     T, H, W = frames.shape
+    x_series = []
+    y_series = []
+    t_series = []
+    p_series = []
 
     latest_ref = L[0].copy()
-    out = np.zeros((T - 1, H, W), dtype=np.int8)
 
-    for t in range(1, T):
-        frame = L[t]
+    for i in range(1, T):
+        frame = L[i]
         polarity = np.zeros_like(frame, dtype=np.int8)
+
         diff = frame - latest_ref
         polarity[diff >= threshold_c] = 1
         polarity[diff <= -threshold_c] = -1
         fired = polarity != 0
-        out[t-1] = polarity
         latest_ref[fired] = frame[fired]
 
-    return out
+        ys, xs = np.nonzero(polarity)
+        ps = polarity[ys, xs]
+
+        x_series.append(xs)
+        y_series.append(ys)
+        t_series.append(np.full(len(xs), i/fps))
+        p_series.append(ps)          
+    
+    return np.concatenate(x_series), np.concatenate(y_series), np.concatenate(t_series), np.concatenate(p_series)
