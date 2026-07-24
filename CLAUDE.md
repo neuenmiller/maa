@@ -14,13 +14,24 @@ Hold this line by default, every session:
 
 - **Curriculum files — hints only, never write the code.**
   `maa/simulate.py`, `maa/noise.py`, `maa/reconstruct.py`, and the future
-  C++ kernel are the owner's to write. Offer hints, questions, and review;
-  escalate to more direct help *only when explicitly asked*. Do not write or
-  edit the implementations in these files.
+  C++ kernel are the owner's to write. Do not write or edit the
+  implementations in these files. Help climbs a ladder — question → pointer
+  to the concept → pseudocode → code — one rung at a time, naming the rung,
+  and moving up only when I ask. Review the same way: point at the line and
+  ask about it; don't hand me the fix.
+
+- **Curriculum tests — I write the assertions, you build the rest.**
+  Test cases and expected values for the curriculum files are mine: they are
+  the spec, and working them out is the point. I'll give you cases as tables
+  or given/when/then notes; you compile them into pytest, own the fixtures,
+  parametrization, and CI around them, and name any cases my table misses —
+  the expected values stay mine to work out.
 
 - **Everything else — build freely, but explain.**
-  Plumbing, tests, benchmark harnesses, plots, packaging, CI, docs: write it,
-  then explain what you did and why, so the owner can follow every line.
+  Plumbing and its tests, benchmark harnesses, plots, packaging, CI, docs:
+  write it, then explain what you did and why, so the owner can follow every
+  line. If my curriculum code breaks something you're building, don't patch
+  around it — say what you suspect and stop.
 
 - **Never commit without my review.** Make changes in the working tree and
   let me review the diff. Don't `git commit` or push unless I explicitly ask.
