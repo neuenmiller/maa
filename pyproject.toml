@@ -12,5 +12,11 @@ dependencies = [
     "imageio-ffmpeg",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
 [tool.setuptools]
 packages = ["maa"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
