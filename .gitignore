@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+.pytest_cache/
 
 # Results: keep the folder marker and the headline demo GIF; ignore scratch figures.
 results/*
