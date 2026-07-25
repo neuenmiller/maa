@@ -166,6 +166,14 @@ def main() -> None:
     events = simulate(frames, fps=in_fps, threshold_c=args.threshold)
     # --- end seam ---
 
+    # TODO(noise): once maa/noise.py runs end to end, add an opt-in --noise flag
+    # here that pipes `events` through noise() before rendering. Everything it
+    # needs is already in scope — this file is the caller that knows the clip:
+    #     sensor_shape = frames.shape[1:]   # (H, W); frames.shape is (T, H, W)
+    #     duration     = len(frames) / in_fps
+    # Deliberately not wired yet: noise()'s signature is still in flux, and the
+    # README calls noise optional, so the default path must stay clean-only.
+
     polarity = to_polarity_frames(events, frames.shape, in_fps)
     rgb = [colorize(p, frames[i + 1]) for i, p in enumerate(polarity)]
     write_gif(args.output, rgb, args.out_fps)
