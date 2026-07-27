@@ -12,7 +12,7 @@ scaffolding is plumbing (Claude-written).
     input arrays are never modified. Does NOT sort: the single sort lives
     in the noise() orchestrator, so nothing here asserts time order.
 
-    background(xs, ys, ts, ps, rng, bg_rate, sensor_shape, duration)
+    background(xs, ys, ts, ps, rng, *, bg_rate, sensor_shape, duration)
         -> (xs, ys, ts, ps)
 
     Appends spurious "leak" events: a Poisson count of about
@@ -191,7 +191,7 @@ def test_background_count_matches_rate_times_pixels_times_duration(stream, rng):
     `duration`, H+W instead of H*W) and miss by factors, not percents.
     """
     xs, ys, ts, ps = stream
-    out_x, _, _, _ = background(xs, ys, ts, ps, rng, BG_RATE, BG_SENSOR, BG_DURATION)
+    out_x, _, _, _ = background(xs, ys, ts, ps, rng, bg_rate=BG_RATE, sensor_shape=BG_SENSOR, duration=BG_DURATION)
     n_new = len(out_x) - len(xs)
     assert abs(n_new - BG_EXPECTED) < BG_BAND, (
         f"generated {n_new} events, expected {BG_EXPECTED:.0f} +- {BG_BAND:.0f} "
@@ -212,7 +212,7 @@ def test_background_coordinates_stay_in_bounds(stream, rng):
     xs, ys, ts, ps = stream
     H, W = SMALL_SENSOR
     out_x, out_y, _, _ = background(
-        xs, ys, ts, ps, rng, SMALL_RATE, SMALL_SENSOR, SMALL_DURATION
+        xs, ys, ts, ps, rng, bg_rate=SMALL_RATE, sensor_shape=SMALL_SENSOR, duration=SMALL_DURATION
     )
     new_x, new_y = out_x[len(xs):], out_y[len(ys):]
     assert len(new_x) > 0, "no events generated — this row proves nothing"
@@ -230,7 +230,7 @@ def test_background_timestamps_stay_in_window(stream, rng):
     """Rows 2-3 (time): every generated timestamp lies inside the clip."""
     xs, ys, ts, ps = stream
     out_x, _, out_t, _ = background(
-        xs, ys, ts, ps, rng, SMALL_RATE, SMALL_SENSOR, SMALL_DURATION
+        xs, ys, ts, ps, rng, bg_rate=SMALL_RATE, sensor_shape=SMALL_SENSOR, duration=SMALL_DURATION
     )
     new_t = out_t[len(xs):]
     assert len(new_t) > 0, "no events generated — this row proves nothing"
@@ -244,7 +244,7 @@ def test_background_events_are_all_on(stream, rng):
     """Row 4: leak events are ON (+1) — the reset-transistor drift is one-way."""
     xs, ys, ts, ps = stream
     out_x, _, _, out_p = background(
-        xs, ys, ts, ps, rng, SMALL_RATE, SMALL_SENSOR, SMALL_DURATION
+        xs, ys, ts, ps, rng, bg_rate=SMALL_RATE, sensor_shape=SMALL_SENSOR, duration=SMALL_DURATION
     )
     new_p = out_p[len(xs):]
     assert len(new_p) > 0, "no events generated — this row proves nothing"
@@ -258,7 +258,7 @@ def test_background_original_events_survive_at_the_front(stream, rng):
     xs, ys, ts, ps = stream
     n = len(xs)
     out_x, out_y, out_t, out_p = background(
-        xs, ys, ts, ps, rng, BG_RATE, BG_SENSOR, BG_DURATION
+        xs, ys, ts, ps, rng, bg_rate=BG_RATE, sensor_shape=BG_SENSOR, duration=BG_DURATION
     )
     assert np.array_equal(out_x[:n], xs), "original x corrupted"
     assert np.array_equal(out_y[:n], ys), "original y corrupted"
@@ -270,7 +270,7 @@ def test_background_input_arrays_not_mutated(stream, rng):
     """Row 6: purity — the caller's clean stream survives the call."""
     xs, ys, ts, ps = stream
     before = tuple(a.copy() for a in (xs, ys, ts, ps))
-    background(xs, ys, ts, ps, rng, BG_RATE, BG_SENSOR, BG_DURATION)
+    background(xs, ys, ts, ps, rng, bg_rate=BG_RATE, sensor_shape=BG_SENSOR, duration=BG_DURATION)
     for name, now, then in zip("xytp", (xs, ys, ts, ps), before):
         assert np.array_equal(now, then), f"background mutated the caller's {name}"
 
@@ -284,7 +284,7 @@ def test_background_output_dtypes(stream, rng):
     """
     xs, ys, ts, ps = stream
     out_x, out_y, out_t, out_p = background(
-        xs, ys, ts, ps, rng, BG_RATE, BG_SENSOR, BG_DURATION
+        xs, ys, ts, ps, rng, bg_rate=BG_RATE, sensor_shape=BG_SENSOR, duration=BG_DURATION
     )
     assert out_x.dtype == np.uint16, f"x should be uint16, got {out_x.dtype}"
     assert out_y.dtype == np.uint16, f"y should be uint16, got {out_y.dtype}"
@@ -296,7 +296,7 @@ def test_background_rate_zero_generates_nothing(stream, rng):
     """Row 8: no leak rate, no leak events — the stream passes through."""
     xs, ys, ts, ps = stream
     out_x, out_y, out_t, out_p = background(
-        xs, ys, ts, ps, rng, 0.0, BG_SENSOR, BG_DURATION
+        xs, ys, ts, ps, rng, bg_rate=0.0, sensor_shape=BG_SENSOR, duration=BG_DURATION
     )
     assert len(out_x) == len(xs), (
         f"rate=0 should add no events, got {len(out_x) - len(xs)}"
@@ -317,7 +317,8 @@ def test_background_count_is_drawn_not_computed(stream):
     xs, ys, ts, ps = stream
     counts = {
         len(background(xs, ys, ts, ps, np.random.default_rng(seed),
-                       BG_RATE, BG_SENSOR, BG_DURATION)[0]) - len(xs)
+                       bg_rate=BG_RATE, sensor_shape=BG_SENSOR,
+                       duration=BG_DURATION)[0]) - len(xs)
         for seed in (1, 2, 3)
     }
     assert len(counts) > 1, (
@@ -339,7 +340,7 @@ def test_background_handles_realistic_sensor_dimensions(stream, rng):
     xs, ys, ts, ps = stream
     H, W = REAL_SENSOR
     out_x, out_y, _, _ = background(
-        xs, ys, ts, ps, rng, REAL_RATE, REAL_SENSOR, REAL_DURATION
+        xs, ys, ts, ps, rng, bg_rate=REAL_RATE, sensor_shape=REAL_SENSOR, duration=REAL_DURATION
     )
     new_x, new_y = out_x[len(xs):], out_y[len(ys):]
     assert len(new_x) > 0, "no events generated — this row proves nothing"
