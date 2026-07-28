@@ -7,8 +7,9 @@
 Minimal event-camera simulator, converts high-fps video into event
 streams. 馬/ม้า: see Muybridge, 1878.
 
-<!-- GIF: drop the headline demo here once results/ has one. -->
 ![demo](results/demo.gif)
+
+<sub>Green = brighter (ON), red = darker (OFF). Footage via [Vecteezy](https://www.vecteezy.com/free-videos/horse-slow).</sub>
 
 ## Install
 
