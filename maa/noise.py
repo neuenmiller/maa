@@ -70,13 +70,21 @@ def hot_p(xs, ys, ts, ps, rng, *, xs_hot, ys_hot, hot_rates, duration):
 def jitter(xs, ys, ts, ps, rng, sigma):
     return xs, ys, ts + rng.normal(0, sigma, len(ts)), ps
 
-def refractory(xs, ys, ts, ps, refractory_dt):
-    raise NotImplementedError
+def refractory(xs, ys, ts, ps, sensor_shape, refractory_dt):
+    last_kept = np.full(sensor_shape, -np.inf)
+    keep = np.zeros(len(ts), dtype=bool)
+
+    for i in range(len(ts)):
+        if ts[i] - last_kept[ys[i], xs[i]] >= refractory_dt:
+            last_kept[ys[i], xs[i]] = ts[i]
+            keep[i] = True
+      
+    return xs[keep], ys[keep], ts[keep], ps[keep]
 
 def noise(xs, ys, ts, ps, rng, bg_rate, xs_hot, ys_hot, hot_rates, sigma, refractory_dt, sensor_shape, duration):   
     xs, ys, ts, ps = background(xs, ys, ts, ps, rng, bg_rate=bg_rate,sensor_shape=sensor_shape, duration=duration)
     xs, ys, ts, ps = hot_p(xs, ys, ts, ps, rng, xs_hot=xs_hot, ys_hot=ys_hot, hot_rates=hot_rates, duration=duration)
     xs, ys, ts, ps = jitter(xs, ys, ts, ps, rng, sigma)
     order = np.argsort(ts)
-    xs, ys, ts, ps = refractory(xs[order], ys[order], ts[order], ps[order], refractory_dt)
+    xs, ys, ts, ps = refractory(xs[order], ys[order], ts[order], ps[order], sensor_shape, refractory_dt)
     return xs, ys, ts, ps
