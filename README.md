@@ -60,8 +60,26 @@ intensity). Full loop: video in → `simulate` → events → `noise` →
 - [x] Implement `simulate` — threshold-crossing events from frames; emit a sparse `(x, y, t, p)` event stream (struct-of-arrays)
 - [x] Implement `noise` — background activity, threshold jitter, hot pixels
 - [ ] Implement `reconstruct` — integrate events back to intensity
-- [ ] `experiments/reproduce_v2e` — sanity-check against v2e. Run this **before** adding pixel-model sophistication: the diff against v2e *is* the requirements list — it names which features (refractory period, intensity-dependent latency, sub-frame interpolation, per-pixel threshold variation) actually move the output.
+- [ ] `experiments/reproduce_v2e` — sanity-check against v2e. Run this **before** adding pixel-model sophistication: the diff against v2e *is* the requirements list — it names which of the candidates below actually move the output.
 - [ ] **Pixel-model sophistication** — implement what the v2e diff demands, in NumPy, with tests. Deterministic pixel physics lives in `simulate` (the oracle holds no RNG); anything random stays in `noise`.
 - [ ] **v1 C++ kernel** (pybind11) — port the hot loop *once the algorithm is frozen*; validate against the NumPy oracle; benchmark NumPy events/sec → C++ speedup
 - [ ] `experiments/e2vid_bench` — reconstruction benchmark
 - [ ] `experiments/sim2real` *(v2 stretch)* — does sim-trained transfer to real events?
+- [ ] **v2+ — generalize past events** *(more of a direction, not a milestone)* — the pipeline is already sensor-shaped: scene → transduction → noise → reconstruction → evaluation. Pull that into a modality-agnostic core and the event camera becomes sensor #1, not the product.
+
+## Sophistication candidates
+
+Status: proposed → confirmed (the v2e diff says it matters) → landed (in
+NumPy, with tests). Placement follows the roadmap rule — deterministic
+physics in `simulate`, randomness in `noise`; factories draw a sensor
+description once, the caller hands it to whichever stage consumes it.
+
+| Candidate | Lives in | Status |
+|---|---|---|
+| per-pixel threshold variation (FPN) | factory in `noise`, map consumed by `simulate` | proposed |
+| multiple events per over-threshold jump | `simulate` | proposed |
+| sub-frame timestamps | `simulate` | proposed |
+| shot noise (balanced ON/OFF, rate rises in the dark) | `noise` | proposed |
+| intensity-dependent latency / bandwidth | `simulate` | proposed |
+| asymmetric ON/OFF thresholds | `simulate` | proposed |
+| dead pixels | `noise` | proposed |

@@ -12,3 +12,10 @@ finished simulate.py, onto
 27/7/2026
 
 finished hot_p and make_hot_p, try to use named field more and be really careful about swapping x and y, refractory is next
+
+
+29/7/2026
+
+finished noise.py, onto reconstruction
+
+interested in fixed pattern noise (FPN, per pixel threshold variation), will probably make it another factory from noise.py, consumed by simulate.py
