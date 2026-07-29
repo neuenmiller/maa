@@ -43,15 +43,31 @@ def to_grayscale(frame: np.ndarray) -> np.ndarray:
     return g / 255.0
 
 
-def read_frames(path: Path, max_frames: int | None):
+def downscale(g: np.ndarray, k: int) -> np.ndarray:
+    """Box-average a grayscale frame down by an integer factor.
+
+    Averaging rather than decimating (``g[::k, ::k]``) matters here: plain
+    decimation aliases high-frequency detail into flicker between frames, and
+    simulate() would faithfully turn that flicker into events. Box-averaging
+    low-passes first, so the events come from real motion.
+    """
+    if k <= 1:
+        return g
+    h, w = (g.shape[0] // k) * k, (g.shape[1] // k) * k
+    return g[:h, :w].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
+
+
+def read_frames(path: Path, max_frames: int | None, start: int = 0, scale: int = 1):
     """Decode a video into stacked [0,1] grayscale frames (+ its source fps)."""
     reader = imageio.get_reader(str(path))
     fps = reader.get_meta_data().get("fps")
     frames = []
     for i, frame in enumerate(reader):
-        if max_frames is not None and i >= max_frames:
+        if i < start:
+            continue
+        if max_frames is not None and len(frames) >= max_frames:
             break
-        frames.append(to_grayscale(frame))
+        frames.append(downscale(to_grayscale(frame), scale))
     reader.close()
     if len(frames) < 2:
         raise SystemExit(f"{path}: need at least 2 frames, got {len(frames)}.")
@@ -75,11 +91,20 @@ def to_polarity_frames(events, shape, fps) -> np.ndarray:
         x, y, t, p = (np.asarray(a) for a in events)
         maps = np.zeros((T - 1, H, W), dtype=np.int8)
         k = np.rint(t * fps).astype(np.intp) - 1
-        if len(k) and (k.min() < 0 or k.max() >= T - 1):
+        inside = (k >= 0) & (k < T - 1)
+        if len(k) and not inside.any():
             raise SystemExit(
-                f"event timestamps bin to transitions {k.min()}..{k.max()}, "
-                f"outside 0..{T - 2} — check the t = (k+1)/fps convention."
+                f"every event bins to transitions {k.min()}..{k.max()}, all outside "
+                f"0..{T - 2} — check the t = (k+1)/fps convention."
             )
+        # Noise legitimately puts events outside the rendered window: background
+        # activity is uniform over [0, duration] but the first renderable
+        # transition is t = 1/fps, and jitter can nudge events past the last one.
+        # Those events are real, just not visible in this frame-binned view.
+        outside = int((~inside).sum())
+        if outside:
+            print(f"  {outside} events outside the rendered window, not drawn")
+        k, y, x, p = k[inside], y[inside], x[inside], p[inside]
         maps[k, y.astype(np.intp), x.astype(np.intp)] = np.sign(p)
         return maps
     maps = np.asarray(events)
@@ -120,6 +145,45 @@ def synthetic_polarity(n=24, h=120, w=160) -> np.ndarray:
     return maps
 
 
+def apply_noise(events, frames_shape, fps, args):
+    """Pipe a clean event stream through maa.noise -> a noisy event stream.
+
+    This function is the *caller* in the library/application split: it holds
+    the facts about this particular recording (how big the sensor is, how long
+    the clip runs) and hands them to the library, which knows nothing about
+    clips. See maa/noise.py's parameter-order convention.
+
+    The hot-pixel list is built here, ONCE, rather than inside noise(): a
+    camera's defective pixels are fixed for its lifetime, so re-drawing them
+    per call would make them just another flavour of background activity —
+    and would confound any sweep, since the sensor would change along with
+    the knob under study.
+    """
+    from maa.noise import make_hot_p, noise
+
+    T, H, W = frames_shape
+    sensor_shape = (H, W)
+    duration = T / fps
+    rng = np.random.default_rng(args.seed)
+
+    xs_hot, ys_hot, hot_rates = make_hot_p(
+        rng, args.bg_rate, sensor_shape, hot_fraction=args.hot_fraction
+    )
+    print(f"  {len(xs_hot)} hot pixels ({args.hot_fraction:.3%} of {H*W}), "
+          f"rates {hot_rates.min():.0f}-{hot_rates.max():.0f} Hz")
+
+    before = len(events[0])
+    noisy = noise(
+        *events, rng,
+        bg_rate=args.bg_rate, xs_hot=xs_hot, ys_hot=ys_hot, hot_rates=hot_rates,
+        sigma=args.jitter_sigma, refractory_dt=args.refractory_dt,
+        sensor_shape=sensor_shape, duration=duration,
+    )
+    print(f"  events: {before} clean -> {len(noisy[0])} noisy "
+          f"({len(noisy[0]) / max(before, 1):.1f}x)")
+    return noisy
+
+
 def write_gif(path: Path, rgb_frames, fps: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     imageio.mimsave(str(path), list(rgb_frames), fps=fps)
@@ -134,11 +198,31 @@ def main() -> None:
                     help="contrast threshold C, in log units")
     ap.add_argument("--max-frames", type=int, default=None,
                     help="cap frames read (handy while iterating)")
+    ap.add_argument("--start-frame", type=int, default=0,
+                    help="skip this many frames before reading")
+    ap.add_argument("--scale", type=int, default=1,
+                    help="box-average downscale factor (4 turns 1080p into 270p)")
     ap.add_argument("--out-fps", type=float, default=25.0,
                     help="playback fps of the output GIF")
     ap.add_argument("--selftest", action="store_true",
                     help="run the colour+GIF plumbing on a synthetic pattern; "
                          "no clip or simulate() needed")
+
+    # --- optional sensor noise (maa.noise). Off by default: the clean stream
+    # --- is the correctness oracle, so it stays the default path.
+    ns = ap.add_argument_group("sensor noise (opt-in)")
+    ns.add_argument("--noise", action="store_true",
+                    help="pipe events through maa.noise before rendering")
+    ns.add_argument("--seed", type=int, default=0,
+                    help="RNG seed; same seed gives the same noise every run")
+    ns.add_argument("--bg-rate", type=float, default=0.1,
+                    help="background activity, events per pixel per second")
+    ns.add_argument("--hot-fraction", type=float, default=0.007,
+                    help="fraction of pixels that are hot (~0.7%% on real DVS)")
+    ns.add_argument("--jitter-sigma", type=float, default=0.002,
+                    help="timestamp jitter, seconds (keep well under 1/fps)")
+    ns.add_argument("--refractory-dt", type=float, default=0.005,
+                    help="per-pixel dead time after an event, seconds")
     args = ap.parse_args()
 
     if args.selftest:
@@ -150,7 +234,8 @@ def main() -> None:
     if args.input is None:
         raise SystemExit("give --input path/to/clip.mp4 (or --selftest).")
 
-    frames, in_fps = read_frames(args.input, args.max_frames)
+    frames, in_fps = read_frames(args.input, args.max_frames,
+                                 start=args.start_frame, scale=args.scale)
     print(f"read {len(frames)} frames from {args.input} (source fps: {in_fps})")
 
     # --- the seam: YOUR code. This is the one call into maa/simulate.py. ---
@@ -165,6 +250,9 @@ def main() -> None:
 
     events = simulate(frames, fps=in_fps, threshold_c=args.threshold)
     # --- end seam ---
+
+    if args.noise:
+        events = apply_noise(events, frames.shape, in_fps, args)
 
     polarity = to_polarity_frames(events, frames.shape, in_fps)
     rgb = [colorize(p, frames[i + 1]) for i, p in enumerate(polarity)]

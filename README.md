@@ -7,8 +7,9 @@
 Minimal event-camera simulator, converts high-fps video into event
 streams. 馬/ม้า: see Muybridge, 1878.
 
-<!-- GIF: drop the headline demo here once results/ has one. -->
 ![demo](results/demo.gif)
+
+<sub>Green = brighter (ON), red = darker (OFF). Footage via [Vecteezy](https://www.vecteezy.com/free-videos/horse-slow).</sub>
 
 ## Install
 
@@ -57,7 +58,7 @@ intensity). Full loop: video in → `simulate` → events → `noise` →
 
 - [x] **First end-to-end demo GIF in `results/`** — 240 fps clip → log-intensity diffs → threshold → green/red events → GIF. Ugly, no noise, no reconstruction, but visible on day one.
 - [x] Implement `simulate` — threshold-crossing events from frames; emit a sparse `(x, y, t, p)` event stream (struct-of-arrays)
-- [ ] Implement `noise` — background activity, threshold jitter, hot pixels
+- [x] Implement `noise` — background activity, threshold jitter, hot pixels
 - [ ] Implement `reconstruct` — integrate events back to intensity
 - [ ] `experiments/reproduce_v2e` — sanity-check against v2e. Run this **before** adding pixel-model sophistication: the diff against v2e *is* the requirements list — it names which features (refractory period, intensity-dependent latency, sub-frame interpolation, per-pixel threshold variation) actually move the output.
 - [ ] **Pixel-model sophistication** — implement what the v2e diff demands, in NumPy, with tests. Deterministic pixel physics lives in `simulate` (the oracle holds no RNG); anything random stays in `noise`.

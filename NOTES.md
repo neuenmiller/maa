@@ -8,3 +8,7 @@ nest session: drop a 240fps slow-mo clip in 'data/' and write the thresold cross
 21/7/2026
 
 finished simulate.py, onto
+
+27/7/2026
+
+finished hot_p and make_hot_p, try to use named field more and be really careful about swapping x and y, refractory is next
