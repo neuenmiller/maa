@@ -20,3 +20,14 @@ packages = ["maa"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Type checker settings, read by pyright and basedpyright (Zed's default
+# Python language server). basedpyright defaults to "recommended", which
+# reports every un-annotated parameter and every variable whose type it
+# cannot infer from one. On an un-annotated NumPy codebase that flags
+# nearly every identifier, which drowns the real diagnostics. "standard"
+# keeps the checks that catch actual mistakes.
+[tool.pyright]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"

@@ -57,7 +57,44 @@ def downscale(g: np.ndarray, k: int) -> np.ndarray:
     return g[:h, :w].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
 
 
-def read_frames(path: Path, max_frames: int | None, start: int = 0, scale: int = 1):
+def parse_crop(spec: str | None):
+    """``"w:h:x:y"`` -> ``(w, h, x, y)``, in ffmpeg's ``crop`` filter order.
+
+    Same order as ffmpeg on purpose: the box is usually found by eye with
+    ``ffmpeg -vf crop=...`` first, and retyping it in a different order is a
+    reliable way to lose an afternoon.
+    """
+    if spec is None:
+        return None
+    try:
+        w, h, x, y = (int(v) for v in spec.split(":"))
+    except ValueError:
+        raise SystemExit(f"--crop wants w:h:x:y (ffmpeg order); got {spec!r}.")
+    return w, h, x, y
+
+
+def crop_frame(g: np.ndarray, box) -> np.ndarray:
+    """Crop a grayscale frame to a ``(w, h, x, y)`` box, clipped to the frame.
+
+    Cropping happens before ``downscale`` so the box is in source pixels and
+    stays valid when --scale changes. It matters for framing that broadcast
+    footage makes hostile: a scoreboard overlay is static, so it emits no
+    events and just sits there as dead grey, while a panning rail or a banner
+    arch is a huge high-contrast edge that swamps the subject.
+    """
+    if box is None:
+        return g
+    w, h, x, y = box
+    H, W = g.shape
+    x0, y0 = max(x, 0), max(y, 0)
+    x1, y1 = min(x0 + w, W), min(y0 + h, H)
+    if x1 <= x0 or y1 <= y0:
+        raise SystemExit(f"--crop {w}:{h}:{x}:{y} selects nothing from a {W}x{H} frame.")
+    return g[y0:y1, x0:x1]
+
+
+def read_frames(path: Path, max_frames: int | None, start: int = 0, scale: int = 1,
+                crop=None):
     """Decode a video into stacked [0,1] grayscale frames (+ its source fps)."""
     reader = imageio.get_reader(str(path))
     fps = reader.get_meta_data().get("fps")
@@ -67,7 +104,7 @@ def read_frames(path: Path, max_frames: int | None, start: int = 0, scale: int =
             continue
         if max_frames is not None and len(frames) >= max_frames:
             break
-        frames.append(downscale(to_grayscale(frame), scale))
+        frames.append(downscale(crop_frame(to_grayscale(frame), crop), scale))
     reader.close()
     if len(frames) < 2:
         raise SystemExit(f"{path}: need at least 2 frames, got {len(frames)}.")
@@ -114,6 +151,31 @@ def to_polarity_frames(events, shape, fps) -> np.ndarray:
             f"got shape {maps.shape}. Adjust to_polarity_frames()."
         )
     return np.sign(maps).astype(np.int8)
+
+
+def to_log_display(L: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """Log-intensity frame -> RGB uint8 grayscale, windowed to [lo, hi].
+
+    Reconstruction comes back in log units, unbounded in principle: drift can push
+    a pixel far past white. Windowing to the *source* clip's log range keeps the
+    reconstruction panel on the same scale as the original, so "too bright" looks
+    too bright instead of being silently renormalised away.
+    """
+    x = np.clip((L - lo) / max(hi - lo, 1e-9), 0.0, 1.0)
+    g = (x * 255.0).astype(np.uint8)
+    return np.repeat(g[..., None], 3, axis=2)
+
+
+def side_by_side(*panels: np.ndarray) -> np.ndarray:
+    """Stack equal-height RGB panels left to right with a thin separator."""
+    h = panels[0].shape[0]
+    sep = np.full((h, 2, 3), 40, dtype=np.uint8)
+    out = []
+    for i, panel in enumerate(panels):
+        if i:
+            out.append(sep)
+        out.append(panel)
+    return np.concatenate(out, axis=1)
 
 
 def colorize(polarity: np.ndarray, base: np.ndarray | None) -> np.ndarray:
@@ -184,6 +246,77 @@ def apply_noise(events, frames_shape, fps, args):
     return noisy
 
 
+def log_window(frames: np.ndarray) -> tuple[float, float]:
+    """The source clip's own log-intensity range, used as the display window.
+
+    Matches simulate.py's eps so the two agree on what "black" means.
+    """
+    L = np.log(frames + 1e-6)
+    return float(L.min()), float(L.max())
+
+
+def reconstruction_panels(events, frames: np.ndarray, in_fps: float, args) -> list:
+    """Call YOUR maa.reconstruct() and turn its log frames into RGB panels.
+
+    Sampling is deliberately locked to the source frame rate rather than
+    --out-fps: the events panel has one image per frame transition, so asking
+    the reconstruction for anything else would leave the two panels drifting
+    apart on the timeline. --out-fps stays what it always was, the GIF's
+    playback speed.
+
+    reconstruct() samples frame f at t = (f+1)/out_fps and transition k is
+    stamped t = (k+1)/fps, so with out_fps == fps the two share an index
+    exactly. There is one more reconstructed frame than there are transitions
+    (T against T-1), so the trailing one is dropped, not the leading one.
+    """
+    try:
+        from maa.reconstruct import reconstruct
+    except (ImportError, AttributeError):
+        raise SystemExit(
+            "maa.reconstruct.reconstruct() isn't implemented yet - that part is yours.\n"
+            "Write the integrator in maa/reconstruct.py, then re-run with --reconstruct.\n"
+            "Everything else in this demo works without it."
+        )
+
+    T, H, W = frames.shape
+    L = np.asarray(reconstruct(
+        *events,
+        sensor_shape=(H, W),
+        duration=T / in_fps,
+        threshold_c=args.threshold,
+        out_fps=in_fps,
+        alpha=args.alpha,
+    ))
+
+    if L.ndim != 3 or L.shape[1:] != (H, W):
+        raise SystemExit(
+            f"reconstruct() returned shape {L.shape}; demo expects (n_frames, {H}, {W}). "
+            "If you chose a different contract, adjust reconstruction_panels()."
+        )
+    if len(L) == T:
+        L = L[:-1]
+    elif len(L) != T - 1:
+        raise SystemExit(
+            f"reconstruct() returned {len(L)} frames; demo expects {T} or {T - 1} "
+            f"for a {T}-frame clip at out_fps={in_fps}."
+        )
+
+    # reconstruct() returns log intensity on its own scale, because events
+    # carry no absolute reference (paper eq. 9: L = L^E + L(p,0) + mu, and
+    # L(p,0) is unknowable). Untouched pixels therefore sit at 0, which is
+    # intensity 1.0 -- above white for a clip normalised to [0, 1]. Recentring
+    # on the clip's own log range is a display choice and belongs here, not in
+    # the library.
+    lo, hi = log_window(frames)
+    offset = (lo + hi) / 2
+    L = L + offset
+    clipped = float(((L < lo) | (L > hi)).mean())
+    print(f"  reconstruction: shifted by {offset:+.2f} for display, "
+          f"log range [{L.min():.2f}, {L.max():.2f}], "
+          f"window [{lo:.2f}, {hi:.2f}], {clipped:.1%} clipped")
+    return [to_log_display(frame, lo, hi) for frame in L]
+
+
 def write_gif(path: Path, rgb_frames, fps: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     imageio.mimsave(str(path), list(rgb_frames), fps=fps)
@@ -200,6 +333,10 @@ def main() -> None:
                     help="cap frames read (handy while iterating)")
     ap.add_argument("--start-frame", type=int, default=0,
                     help="skip this many frames before reading")
+    ap.add_argument("--crop", type=str, default=None,
+                    help="crop the source to w:h:x:y (ffmpeg order) before "
+                         "downscaling; handy for cutting broadcast overlays "
+                         "and background clutter out of the frame")
     ap.add_argument("--scale", type=int, default=1,
                     help="box-average downscale factor (4 turns 1080p into 270p)")
     ap.add_argument("--out-fps", type=float, default=25.0,
@@ -223,6 +360,14 @@ def main() -> None:
                     help="timestamp jitter, seconds (keep well under 1/fps)")
     ns.add_argument("--refractory-dt", type=float, default=0.005,
                     help="per-pixel dead time after an event, seconds")
+
+    # --- optional reconstruction (maa.reconstruct). Renders a three-panel GIF:
+    # --- original | events | reconstruction, all on one timeline.
+    rc = ap.add_argument_group("reconstruction (opt-in)")
+    rc.add_argument("--reconstruct", action="store_true",
+                    help="integrate events back to intensity and show them side by side")
+    rc.add_argument("--alpha", type=float, default=0.0,
+                    help="leak rate, 1/s; 0 is pure integration, try 2*pi for the paper's value")
     args = ap.parse_args()
 
     if args.selftest:
@@ -235,7 +380,8 @@ def main() -> None:
         raise SystemExit("give --input path/to/clip.mp4 (or --selftest).")
 
     frames, in_fps = read_frames(args.input, args.max_frames,
-                                 start=args.start_frame, scale=args.scale)
+                                 start=args.start_frame, scale=args.scale,
+                                 crop=parse_crop(args.crop))
     print(f"read {len(frames)} frames from {args.input} (source fps: {in_fps})")
 
     # --- the seam: YOUR code. This is the one call into maa/simulate.py. ---
@@ -256,6 +402,15 @@ def main() -> None:
 
     polarity = to_polarity_frames(events, frames.shape, in_fps)
     rgb = [colorize(p, frames[i + 1]) for i, p in enumerate(polarity)]
+
+    if args.reconstruct:
+        lo, hi = log_window(frames)
+        # One row per transition k, so all three panels show the same instant:
+        # the source frame k+1, the events that produced it, the reconstruction.
+        original = [to_log_display(np.log(f + 1e-6), lo, hi) for f in frames[1:]]
+        recon = reconstruction_panels(events, frames, in_fps, args)
+        rgb = [side_by_side(o, e, r) for o, e, r in zip(original, rgb, recon)]
+
     write_gif(args.output, rgb, args.out_fps)
 
 
